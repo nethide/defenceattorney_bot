@@ -83,5 +83,5 @@ async def handle_ban_button(callback: CallbackQuery, bot: Bot):
         await callback.answer("✅ Пользователь забанен!", show_alert=True)
 
     except Exception as e:
-        await callback.answer(f"❌ Ошибка: {str(e)}", show_alert=True)
+        #await callback.answer(f"❌ Ошибка: {str(e)}", show_alert=True)
         print(f"Ошибка при бане пользователя: {e}")

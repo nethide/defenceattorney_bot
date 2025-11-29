@@ -1,22 +1,114 @@
 from aiogram import F, Bot, Router
-from aiogram.types import Message
+from aiogram.exceptions import TelegramBadRequest
+from aiogram.types import Message, ChatPermissions
 from aiogram.enums import ChatType, ChatMemberStatus
-from aiogram.filters import Command
+from aiogram.filters import Command, CommandObject
 from asyncio import sleep
 from re import findall
+from datetime import datetime, timedelta, timezone
+
 from utils.bots_declination import bots_plural
+from utils.duration_parser import parse_duration_one
 
 router = Router()
 router.message.filter(F.chat.type.in_([ChatType.GROUP, ChatType.SUPERGROUP]))
 
-@router.message(Command("execution"))
+@router.message(Command("testing"))
+async def silence(message: Message, bot: Bot, command: CommandObject):
+    cmd_user = message.from_user
+
+    permissions_mute = ChatPermissions(
+        can_send_messages=False,
+        can_send_audios=False,
+        can_send_documents=False,
+        can_send_photos=False,
+        can_send_videos=False,
+        can_send_video_notes=False,
+        can_send_voice_notes=False,
+        can_send_polls=False,
+        can_send_other_messages=False,
+        can_add_web_page_previews=False,
+    )
+
+    member = await bot.get_chat_member(message.chat.id, message.from_user.id)
+    if member.status != ChatMemberStatus.ADMINISTRATOR or not getattr(member, "can_restrict_members", False):
+        await message.answer("❌ У вас нет права выдавать наказания")
+        return
+
+    if not command.args:
+        await message.answer(
+            "Форматы:\n"
+            f"• Ответом: <code> /{command.command} время причина</code>\n"
+            f"• По ID: <code> /{command.command} id время причина</code>"
+        )
+        return
+
+    if message.reply_to_message:
+        target_user = message.reply_to_message.from_user
+
+        parts = command.args.split(maxsplit=1)
+        time = parts[0]
+        reason = parts[1] if len(parts) > 1 else ""
+
+        seconds = await parse_duration_one(time)
+        until_date = datetime.now(timezone.utc) + timedelta(seconds=seconds)
+
+        try:
+            await bot.restrict_chat_member(
+                chat_id=message.chat.id,
+                user_id=target_user.id,
+                permissions=permissions_mute,
+                until_date=until_date
+            )
+        except TelegramBadRequest as e:
+            if "user is an administrator of the chat" in e.message:
+                await message.answer(f"{cmd_user.mention_html(f"{cmd_user.full_name}")}, вы не можете вы можете вынести приговор коллеге. ")
+                return
+
+        await message.answer(
+            f"🔇 {target_user.mention_html(name=f"{target_user.full_name}")} обезмолвлен(а)!\n"
+            f"⏱ До: <code>{until_date.strftime("%Y-%m-%d %H:%M:%S")}</code>\n"
+            f"💬 Причина: <i>{reason or '<code>Не указана</code>'}</i>"
+        )
+        return
+
+    parts = command.args.split(maxsplit=2)
+
+    if len(parts) < 2:
+        await message.answer(f"❌ Формат: {command.command} <code>id</code> <code>время</code> <code>причина</code>")
+        return
+
+    user_id_raw = parts[0]
+    time = parts[1]
+    reason = parts[2] if len(parts) > 2 else ""
+
+    seconds = await parse_duration_one(time)
+    until_date = datetime.now(timezone.utc) + timedelta(seconds=seconds)
+
+    try:
+        user_id = int(user_id_raw)
+    except ValueError:
+        await message.answer(f"❌ ID должен быть числом, а не: <code>{user_id_raw}</code>")
+        return
+
+    target_user_raw = await bot.get_chat_member(message.chat.id, user_id)
+    target_user = target_user_raw.user
+
+    await message.answer(
+        f"🔇 {target_user.mention_html(name=f"{target_user.full_name}")} обезмолвлен(а)!\n"
+        f"⏱ До: <code>{until_date.strftime("%Y-%m-%d %H:%M:%S")}</code>\n"
+        f"💬 Причина: <i>{reason or '<code>Не указана</code>'}</i>"
+    )
+    return
+
+@router.message(Command("deadly-sentencing"))
 async def execute(message:  Message, bot: Bot):
     chat_type = message.chat.type
 
     if chat_type == ChatType.GROUP or chat_type == ChatType.SUPERGROUP:
-        user = await bot.get_chat_member(message.chat.id, message.from_user.id)
+        member = await bot.get_chat_member(message.chat.id, message.from_user.id)
 
-        if user.status == ChatMemberStatus.ADMINISTRATOR:
+        if member.status != ChatMemberStatus.ADMINISTRATOR or not member.can_restrict_members:
             text = message.reply_to_message.text
 
             if not text:
@@ -81,17 +173,16 @@ async def execute(message:  Message, bot: Bot):
                 pass
 
 
-@router.message(Command("execute"))
+@router.message(Command("execution"))
 async def execute_ban(message: Message, bot: Bot):
-    """Банит пользователя по ID или по ответу на сообщение"""
 
     try:
         member = await bot.get_chat_member(message.chat.id, message.from_user.id)
         if member.status not in ["creator", "administrator"]:
-            await message.reply("❌ Эта команда доступна только администраторам!")
+            await message.answer("❌ Эта команда доступна только администраторам!")
             return
     except Exception:
-        await message.reply("❌ Не могу проверить ваши права!")
+        await message.answer("❌ Не могу проверить ваши права!")
         return
 
     user_id = None
@@ -130,37 +221,37 @@ async def execute_ban(message: Message, bot: Bot):
             user_id = int(command_args[1])
             user_info = f"ID: {user_id}"
         except ValueError:
-            await message.reply("❌ Неверный формат ID! Используйте числовой ID.")
+            await message.answer("❌ Неверный формат ID! Используйте числовой ID.")
             return
 
     if user_id == message.from_user.id:
-        await message.reply("❌ Вы не можете забанить самого себя!")
+        await message.answer("❌ Вы не можете забанить самого себя!")
         return
 
     if user_id == bot.id:
-        await message.reply("❌ Я не могу забанить сам себя!")
+        await message.answer("❌ Я не могу забанить сам себя!")
         return
 
     try:
         bot_member = await bot.get_chat_member(chat_id, bot.id)
         if bot_member.status != "administrator" or not bot_member.can_restrict_members:
-            await message.reply("❌ У меня нет прав для бана участников!")
+            await message.answer("❌ У меня нет прав для бана участников!")
             return
     except Exception:
-        await message.reply("❌ Не могу проверить свои права!")
+        await message.answer("❌ Не могу проверить свои права!")
         return
 
     try:
         await bot.ban_chat_member(chat_id, user_id)
 
-        await message.reply(
+        await message.answer(
             f"✅ <b>Пользователь забанен!</b>\n\n"
             f"👤 {user_info}\n"
             f"⚡️ <b>Администратор:</b> {message.from_user.first_name}",
             parse_mode="HTML"
         )
     except Exception as e:
-        await message.reply(f"❌ Ошибка при бане: {str(e)}")
+        await message.answer(f"❌ Ошибка при бане: {str(e)}")
 
 
 
