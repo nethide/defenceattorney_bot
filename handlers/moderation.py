@@ -7,7 +7,7 @@ from asyncio import sleep
 from re import findall
 from datetime import datetime, timedelta, timezone
 
-from utils.bots_declination import bots_plural
+from utils.members_declination import members_plural
 from utils.duration_parser import parse_duration_one
 
 router = Router()
@@ -123,11 +123,9 @@ async def execute(message:  Message, bot: Bot):
 
             user_ids = list(set([int(uid) for uid in user_ids]))
 
-            status_msg = await message.answer(f"""⌛ Суд начинается...
-            
-Обвиняемые: {await bots_plural(len(user_ids))}
-Список обвиняемых (id):
-<blockquote expandable>{user_ids}</blockquote>""")
+            status_msg = await message.answer(
+                f"⌛ Выношу приговор для {await members_plural(len(user_ids))}!\n"
+            )
 
             banned_count = 0
             failed_count = 0
@@ -155,15 +153,14 @@ async def execute(message:  Message, bot: Bot):
                     else:
                         failed_count += 1
 
-            report = f"""⭐ Суд окончен...
-
-📊 Итоги:
-<blockquote>🪓 Наказаны: {await bots_plural(banned_count)}
-❌ Ошибок: {await bots_plural(failed_count)}
-📝 Всего осуждено: {len(user_ids)}</blockquote>
-
-Список обвиняемых (id):
-<blockquote expandable>{user_ids}</blockquote>"""
+            report = (
+                f"📃 Итоги суда"
+                f"<blockquote>🪓 Наказаны: {await members_plural(banned_count)}"
+                f"❌ Ошибок: {failed_count}</blockquote>"
+                f""
+                f"Список обвиняемых (id):"
+                f"<blockquote expandable>{user_ids}</blockquote>"
+            )
 
             await status_msg.edit_text(report)
 
@@ -179,10 +176,9 @@ async def execute_ban(message: Message, bot: Bot):
     try:
         member = await bot.get_chat_member(message.chat.id, message.from_user.id)
         if member.status not in ["creator", "administrator"]:
-            await message.answer("❌ Эта команда доступна только администраторам!")
             return
     except Exception:
-        await message.answer("❌ Не могу проверить ваши права!")
+        await message.answer("❌ Произошла ошибка!")
         return
 
     user_id = None
