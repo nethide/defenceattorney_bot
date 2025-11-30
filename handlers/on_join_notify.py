@@ -26,7 +26,7 @@ async def on_user_join(event: ChatMemberUpdated, bot: Bot):
     if user.username:
         notification_text += f"👤 <b>Упоминание:</b> @{user.username}\n"
 
-    notification_text += f"👤 <b>Имя:</b> <a href='tg://user?id={user.id}'>{full_name}</a>\n"
+    notification_text += f"👤 <b>Имя:</b> {user.mention_html(f"{user.full_name}")}\n"
 
     notification_text += f"📝 <b>Полное имя:</b> {full_name}\n"
 
