@@ -13,7 +13,7 @@ from utils.duration_parser import parse_duration_one
 router = Router()
 router.message.filter(F.chat.type.in_([ChatType.GROUP, ChatType.SUPERGROUP]))
 
-@router.message(Command("testing"))
+@router.message(Command("quiet"))
 async def silence(message: Message, bot: Bot, command: CommandObject):
     cmd_user = message.from_user
 
