@@ -107,18 +107,23 @@ async def execute(message:  Message, bot: Bot):
 
     if chat_type == ChatType.GROUP or chat_type == ChatType.SUPERGROUP:
         member = await bot.get_chat_member(message.chat.id, message.from_user.id)
+        print(member.can_restrict_members)
 
-        if member.status != ChatMemberStatus.ADMINISTRATOR or not member.can_restrict_members:
-            text = message.reply_to_message.text
-
+        if member.status == ChatMemberStatus.ADMINISTRATOR and member.can_restrict_members:
+            try:
+                text = message.reply_to_message.text
+            except AttributeError:
+                await message.answer(f"{member.mention_html(name=f"{member.full_name}")}, вы не указали на сообщение ❌")
+                return
             if not text:
-                await message.answer("❌ В сообщении нет текста с ID")
+                await message.answer(f"{member.mention_html(name=f"{member.full_name}")}, в сообщении нет текста с ID ❌")
                 return
 
             user_ids = findall(r'\b\d{6,}\b', text)
 
             if not user_ids:
-                await message.answer("❌ ID пользователей не найдены")
+                await message.answer(
+                    f"{member.mention_html(name=f"{member.full_name}")}, в сообщении нет id ❌")
                 return
 
             user_ids = list(set([int(uid) for uid in user_ids]))
@@ -148,14 +153,15 @@ async def execute(message:  Message, bot: Bot):
                     elif "user not found" in error_text:
                         failed_count += 1
                     elif "not enough rights" in error_text:
-                        await message.answer("❌ У бота недостаточно прав для казни 😭")
+                        await message.answer(
+                            f"{member.mention_html(name=f"{member.full_name}")}, у бота недостаточно прав ❌")
                         return
                     else:
                         failed_count += 1
 
             report = (
                 f"📃 Итоги суда"
-                f"<blockquote>🪓 Наказаны: {await members_plural(banned_count)}"
+                f"<blockquote>🪓 Наказаны: {await members_plural(banned_count)} \n"
                 f"❌ Ошибок: {failed_count}</blockquote>"
                 f""
                 f"Список обвиняемых (id):"
