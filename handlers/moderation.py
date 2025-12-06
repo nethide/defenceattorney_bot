@@ -101,7 +101,7 @@ async def silence(message: Message, bot: Bot, command: CommandObject):
     )
     return
 
-@router.message(Command("deadly-sentencing"))
+@router.message(Command("tribunal"))
 async def execute(message:  Message, bot: Bot):
     chat_type = message.chat.type
 
