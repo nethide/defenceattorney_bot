@@ -134,7 +134,6 @@ async def execute(message:  Message, bot: Bot):
 
             banned_count = 0
             failed_count = 0
-            already_banned = 0
 
             for user_id in user_ids:
                 try:
