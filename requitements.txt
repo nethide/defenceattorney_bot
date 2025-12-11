@@ -1,0 +1,6 @@
+kurigram==2.2.15
+aiogram==3.22.0
+apscheduler==3.11.1
+apscheduler-di==0.1.0
+six==1.17.0
+redis==7.1.0
