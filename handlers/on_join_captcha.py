@@ -9,6 +9,8 @@ from datetime import datetime, timedelta
 from scheduler.captcha_kick import kick_member
 from markups.inline import build_captcha_markup
 
+from config import CAPTCHA_TIME
+
 router = Router()
 
 @router.chat_member(
@@ -47,10 +49,10 @@ async def on_user_join(event: ChatMemberUpdated, bot: Bot, scheduler: AsyncIOSch
         full_name += f" {user.last_name}"
 
     message = await event.answer(f"""
-Привет, {user.mention_html(full_name)} 👋🏻. Чтобы отправлять сообщения, нажмите на кнопку ниже. У вас 10 минут ⌛
+Привет, {user.mention_html(full_name)} 👋🏻. Чтобы отправлять сообщения, нажмите на кнопку ниже. У вас {CAPTCHA_TIME} минут ⌛
 """, reply_markup=await build_captcha_markup(user.id))
 
-    until_date = datetime.now() + timedelta(minutes=10)
+    until_date = datetime.now() + timedelta(minutes=CAPTCHA_TIME)
 
     scheduler.add_job(kick_member, trigger='date', run_date=until_date,
                             kwargs={'chat_id': chat.id, 'user_id': user.id, 'message_id': message.message_id})
