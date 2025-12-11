@@ -25,7 +25,50 @@ async def on_user_join(event: ChatMemberUpdated, bot: Bot, scheduler: AsyncIOSch
     user = event.new_chat_member.user
     chat = event.chat
 
-    permissions_mute = ChatPermissions(
+    full_name = user.first_name
+    if user.last_name:
+        full_name += f" {user.last_name}"
+
+    notification_text = f"🆕 <b>Новый участник!</b>\n\n"
+
+    if user.username:
+        notification_text += f"👤 <b>Упоминание:</b> @{user.username}\n"
+
+    notification_text += f"👤 <b>Имя:</b> {user.mention_html(f"{user.full_name}")}\n"
+
+    notification_text += f"📝 <b>Полное имя:</b> {full_name}\n"
+
+    notification_text += f"🆔 <b>ID:</b> <code>{user.id}</code>\n"
+
+    if user.username:
+        notification_text += f"📱 <b>Username:</b> @{user.username}\n"
+
+    notification_text += f"💬 <b>Группа:</b> {chat.title}"
+
+    if user.is_bot:
+        notification_text += f"\n⚠️ <b>Это бот!</b>"
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(
+                text="🚫 Забанить",
+                callback_data=f"ban_{user.id}_{chat.id}"
+            )
+        ]
+    ])
+
+    try:
+        await bot.send_message(
+            chat_id=NOTIFICATION_GROUP_ID,
+            text=notification_text,
+            parse_mode="HTML",
+            reply_markup=keyboard
+        )
+    except Exception as e:
+        print(f"Ошибка при отправке уведомления: {e}")
+
+
+"""    permissions_mute = ChatPermissions(
         can_send_messages=False,
         can_send_audios=False,
         can_send_documents=False,
@@ -48,14 +91,14 @@ async def on_user_join(event: ChatMemberUpdated, bot: Bot, scheduler: AsyncIOSch
     if user.last_name:
         full_name += f" {user.last_name}"
 
-    message = await event.answer(f"""
+    message = await event.answer(f
 Привет, {user.mention_html(full_name)} 👋🏻. Чтобы отправлять сообщения, нажмите на кнопку ниже. У вас {CAPTCHA_TIME} минут ⌛
-""", reply_markup=await build_captcha_markup(user.id))
+, reply_markup=await build_captcha_markup(user.id))
 
     until_date = datetime.now() + timedelta(minutes=CAPTCHA_TIME)
 
     scheduler.add_job(kick_member, trigger='date', run_date=until_date,
-                            kwargs={'chat_id': chat.id, 'user_id': user.id, 'message_id': message.message_id})
+                            kwargs={'chat_id': chat.id, 'user_id': user.id, 'message_id': message.message_id})"""
 
 @router.callback_query(F.data.startswith("verify::"))
 async def verify_button(callback: CallbackQuery, bot: Bot):
