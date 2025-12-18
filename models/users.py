@@ -7,44 +7,19 @@ from typing import Any
 class User:
     @classmethod
     async def get_data(cls, bot: Bot, pool: Pool, telegram_id: int, group_id: int):
-        is_user_registered_global = await pool.fetchval(
+        await pool.execute(
         """
-        SELECT EXISTS(
-            SELECT 1
-            FROM users
-            WHERE telegram_id = $1
+            INSERT INTO users (telegram_id) VALUES ($1)
+            ON CONFLICT (telegram_id) DO NOTHING
+            """, telegram_id
         )
-        """,
-        telegram_id)
 
-        if not is_user_registered_global:
-            await pool.execute(
-                """
-                INSERT INTO users
-                VALUES($1)
-                """,
-                telegram_id
-            )
-
-        is_user_registered_local = await pool.fetchval(
+        await pool.execute(
         """
-        SELECT EXISTS(
-            SELECT 1
-            FROM user_groups
-            WHERE telegram_id = $1
-            AND group_id = $2
+            INSERT INTO user_groups (telegram_id, group_id) VALUES ($1, $2)
+            ON CONFLICT (telegram_id, group_id) DO NOTHING
+            """, telegram_id, group_id
         )
-        """,
-        telegram_id, group_id)
-
-        if is_user_registered_local is False:
-            await pool.execute(
-                """
-                INSERT INTO user_groups(telegram_id, group_id)
-                VALUES($1, $2) 
-                """,
-            telegram_id, group_id
-            )
 
         data = await pool.fetchrow(
             """
@@ -94,8 +69,8 @@ class User:
         await self.pool.execute(
             """
             UPDATE user_groups
-            SET is_banned = true
-            AND ban_reason = $1
+            SET is_banned = true,
+            ban_reason = $1
             WHERE telegram_id = $2
             AND group_id = $3
             """, reason, self.telegram_id, self.group_id
@@ -119,8 +94,8 @@ class User:
         await self.pool.execute(
             """
             UPDATE users_groups
-            SET is_banned = false
-            AND ban_reason = ''
+            SET is_banned = false,
+            ban_reason = ''
             WHERE telegram_id = $2
             AND group_id = $3
             """, reason, self.telegram_id, self.group_id
@@ -129,8 +104,8 @@ class User:
         await self.pool.execute(
             """
             DELETE FROM moderator_log
-            WHERE group_id = $1
-            AND user_id = $2
+            WHERE group_id = $1,
+            user_id = $2
             """, self.data['group_id'], self.data['user_id'],
         )
 
@@ -148,8 +123,8 @@ class User:
             """
             UPDATE users_groups 
             SET warnings_count = warnings_count + 1
-            WHERE telegram_id = $1
-            AND group_id = $2
+            WHERE telegram_id = $1,
+            group_id = $2
             """, self.telegram_id, self.group_id
         )
 
