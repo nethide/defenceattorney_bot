@@ -6,10 +6,12 @@ import logging
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
-from aiogram.types import Chat, ChatMember
 from apscheduler.jobstores.redis import RedisJobStore
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler_di import ContextSchedulerDecorator
+from asyncpg import create_pool
+
+from config import DATABASE
 
 # Конфиг
 from config import TOKEN, REDIS
@@ -22,8 +24,10 @@ bot = Bot(token=TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
 # Роутеры (Routers)
 from handlers.moderation import router as execute_router
 from handlers.on_join_captcha import router as on_join_notify
+from handlers.mod_commands import router as mod_commands
 
 from middlewares.SchedulerMiddleware import SchedulerMiddleware
+from middlewares.DatabaseMiddleware import DataBaseMiddleware
 
 async def main():
     jobstores = {
@@ -37,11 +41,15 @@ async def main():
     else:
         scheduler = ContextSchedulerDecorator(AsyncIOScheduler(timezone="Europe/Moscow"))
 
+    pool_connect = await create_pool(DATABASE)
+
     scheduler.ctx.add_instance(bot, declared_class=Bot)
     scheduler.start()
 
     dp = Dispatcher()
-    dp.include_routers(execute_router, on_join_notify)
+    dp.message.middleware(DataBaseMiddleware(pool_connect))
+    dp.callback_query.middleware(DataBaseMiddleware(pool_connect))
+    dp.include_routers(execute_router, on_join_notify, mod_commands)
     dp.update.middleware(SchedulerMiddleware(scheduler))
     await asyncio.gather(dp.start_polling(bot))
 
