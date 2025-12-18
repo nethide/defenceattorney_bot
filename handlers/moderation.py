@@ -16,6 +16,7 @@ router.message.filter(F.chat.type.in_([ChatType.GROUP, ChatType.SUPERGROUP]))
 @router.message(Command("quiet"))
 async def silence(message: Message, bot: Bot, command: CommandObject):
     cmd_user = message.from_user
+    print(type(cmd_user))
 
     permissions_mute = ChatPermissions(
         can_send_messages=False,
@@ -174,85 +175,6 @@ async def execute(message:  Message, bot: Bot):
             except:
                 pass
 
-
-@router.message(Command("execution"))
-async def execute_ban(message: Message, bot: Bot):
-
-    try:
-        member = await bot.get_chat_member(message.chat.id, message.from_user.id)
-        if member.status not in ["creator", "administrator"]:
-            return
-    except Exception:
-        await message.answer("❌ Произошла ошибка!")
-        return
-
-    user_id = None
-    chat_id = message.chat.id
-    user_info = None
-
-    if message.reply_to_message:
-        user_id = message.reply_to_message.from_user.id
-        user = message.reply_to_message.from_user
-
-        full_name = user.first_name
-        if user.last_name:
-            full_name += f" {user.last_name}"
-
-        user_info = f"{full_name} (ID: {user_id})"
-
-        if user.username:
-            user_info += f" @{user.username}"
-
-    else:
-        command_args = message.text.split(maxsplit=1)
-
-        if len(command_args) < 2:
-            await message.reply(
-                "❌ <b>Использование:</b>\n"
-                "• <code>/execute [ID]</code> - забанить по ID\n"
-                "• <code>/execute</code> (ответ на сообщение) - забанить автора сообщения\n\n"
-                "<b>Примеры:</b>\n"
-                "• <code>/execute 123456789</code>\n"
-                "• Ответьте на сообщение пользователя и напишите <code>/execute</code>",
-                parse_mode="HTML"
-            )
-            return
-
-        try:
-            user_id = int(command_args[1])
-            user_info = f"ID: {user_id}"
-        except ValueError:
-            await message.answer("❌ Неверный формат ID! Используйте числовой ID.")
-            return
-
-    if user_id == message.from_user.id:
-        await message.answer("❌ Вы не можете забанить самого себя!")
-        return
-
-    if user_id == bot.id:
-        await message.answer("❌ Я не могу забанить сам себя!")
-        return
-
-    try:
-        bot_member = await bot.get_chat_member(chat_id, bot.id)
-        if bot_member.status != "administrator" or not bot_member.can_restrict_members:
-            await message.answer("❌ У меня нет прав для бана участников!")
-            return
-    except Exception:
-        await message.answer("❌ Не могу проверить свои права!")
-        return
-
-    try:
-        await bot.ban_chat_member(chat_id, user_id)
-
-        await message.answer(
-            f"✅ <b>Пользователь забанен!</b>\n\n"
-            f"👤 {user_info}\n"
-            f"⚡️ <b>Администратор:</b> {message.from_user.first_name}",
-            parse_mode="HTML"
-        )
-    except Exception as e:
-        await message.answer(f"❌ Ошибка при бане: {str(e)}")
 
 
 
