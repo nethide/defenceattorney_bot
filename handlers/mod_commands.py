@@ -29,89 +29,48 @@ async def execution(message: Message, database: Pool, bot: Bot, command: Command
                 await message.answer(f"❌ Не могу проверить свои права.")
                 return
 
-            command_args = message.text.split(" ")
+            command_args = command.args.split()
+            reason = None
+            time_seconds = None
             until_date = None
+
+            print(command.args)
 
             if message.reply_to_message:
                 target_user_id = message.reply_to_message.from_user.id
+                if len(command_args) >= 1:
+                    try:
+                        time_seconds = await parse_duration_one(args[0])
+                        if len(command_args) > 1:
+                            reason = " ".join(command_args[1:])
+                    except ValueError:
+                        reason = " ".join(command_args)
 
-                if len(command_args) > 2:
+            else:
+                if not command_args:
                     await message.answer(
                         f"📃 Справка <code>{command.command}</code> \n"
-                        f"<code>/{command.command}</code> (ответ на сообщение) [время] [причина]\n\n"
+                        f"<code>/{command.command}</code> [ID] или [username] \n"
+                        f"<code>/{command.command}</code> (ответ на сообщение)\n\n"
+                        f"ℹ️ Описание"
+                        f"<blockquote><code>{command.command}</code> казнит пользователя по id или по ответу на сообщение.</blockquote>"
                     )
                     return
 
-                if len(command_args) == 1:
-                    time = "Навсегда"
-                    reason = "Не указана"
-                elif len(command_args) == 2:
-                    try:
-                        time = await parse_duration_one(command_args[1])
-                        until_date = datetime.now() + timedelta(seconds=time)
-                        reason = "<code>Не указана</code>"
-                    except ValueError:
-                        time = "Навсегда"
-                        reason = command_args[1]
-                else:
-                    try:
-                        time = await parse_duration_one(command_args[1])
-                        until_date = datetime.now() + timedelta(seconds=time)
-                    except ValueError:
-                        await message.answer(
-                            f"📃 Справка <code>{command.command}</code> \n"
-                            f"<code>/{command.command}</code> (ответ на сообщение) [время] [причина]\n\n"
-                        )
-                        return
-                    reason = command_args[2]
-
-            else:
-                if len(command_args) == 1 or len(command_args) > 4:
-                    await message.answer(
-                            f"📃 Справка <code>{command.command}</code> \n"
-                            f"<code>/{command.command}</code> [id] или [username] [время] [причина]\n\n"
-                        )
-                    return
-
                 try:
-                    target_user_id = int(command_args[1])
+                    target_user_id = int(command_args[0])
                 except ValueError:
-                    await message.answer(
-                            f"📃 Справка <code>{command.command}</code> \n"
-                            f"<code>/{command.command}</code> [id] или [username] [время] [причина]\n\n"
-                        )
+                    await message.answer("❌ Вы не указали ID")
                     return
 
-                if len(command_args) == 2:
-                    time = "Навсегда"
-                    reason = "Не указана"
-
-                elif len(command_args) == 3:
-
+                if len(command_args) >= 2:
                     try:
-                        time = await parse_duration_one(command_args[2])
-                        reason = "Не указана"
-                        until_date = datetime.now() + timedelta(seconds=time)
+                        time_seconds = await parse_duration_one(command_args[1])
+                        if len(command_args) > 2:
+                            reason = " ".join(command_args[2:])
                     except ValueError:
-                        time = "Навсегда"
-                        reason = command_args[2]
-
-                else:
-
-                    try:
-                        time = await parse_duration_one(command_args[2])
-                        until_date = datetime.now() + timedelta(seconds=time)
-                    except AttributeError:
-                        await message.answer(
-                            f"📃 Справка <code>{command.command}</code> \n"
-                            f"<code>/{command.command}</code> [ID] или [username] \n"
-                            f"<code>/{command.command}</code> (ответ на сообщение)\n\n"
-                            f"ℹ️ Описание"
-                            f"<blockquote><code>{command.command}</code> казнит пользователя по id или по ответу на сообщение.</blockquote>"
-                        )
-                        return
-
-                    reason = command_args[3]
+                        reason = " ".join(command_args[1:])
+                    return
 
             if cmd_user.telegram_id == target_user_id:
                 await message.answer(f"❌ Вы не можете забанить самого себя!")
@@ -132,6 +91,9 @@ async def execution(message: Message, database: Pool, bot: Bot, command: Command
                 await message.answer(f"⚖️ Пользователю [{target_user.telegram_id}] уже вынесен приговор.")
                 return
 
+            if time_seconds:
+                until_date = datetime.now(timezone.utc) + timedelta(seconds=time_seconds)
+
             await target_user.ban_user(reason, until_date, cmd_user.telegram_id)
             await bot.ban_chat_member(
                 chat_id=message.chat.id,
@@ -139,7 +101,7 @@ async def execution(message: Message, database: Pool, bot: Bot, command: Command
                 until_date=until_date
             )
 
-            if time == "Навсегда" and reason == "Не указана":
+            if time_seconds is None and reason is None:
                 await message.answer(f"⚖️ {mention} казнен(а) \n")
                 return
 
