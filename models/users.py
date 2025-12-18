@@ -69,8 +69,8 @@ class User:
         await self.pool.execute(
             """
             UPDATE user_groups
-            SET is_banned = true,
-            ban_reason = $1
+            SET is_banned = true
+            AND ban_reason = $1
             WHERE telegram_id = $2
             AND group_id = $3
             """, reason, self.telegram_id, self.group_id
@@ -90,23 +90,23 @@ class User:
             """, self.data['group_id'], self.data['telegram_id'], 'ban', reason, moderator_id, until
         )
 
-    async def unban_user(self, reason: str, until: Any, moderator_id: str):
+    async def unban_user(self):
         await self.pool.execute(
             """
-            UPDATE users_groups
-            SET is_banned = false,
-            ban_reason = ''
-            WHERE telegram_id = $2
-            AND group_id = $3
-            """, reason, self.telegram_id, self.group_id
+            UPDATE user_groups
+            SET is_banned = false
+            AND ban_reason = ''
+            WHERE telegram_id = $1
+            AND group_id = $2
+            """, self.telegram_id, self.group_id
         )
 
         await self.pool.execute(
             """
             DELETE FROM moderator_log
-            WHERE group_id = $1,
-            user_id = $2
-            """, self.data['group_id'], self.data['user_id'],
+            WHERE group_id = $1
+            AND user_id = $2
+            """, self.data['group_id'], self.data['telegram_id'],
         )
 
     async def mute_user(self, reason: str, until: Any, moderator_id: str):
@@ -123,8 +123,8 @@ class User:
             """
             UPDATE users_groups 
             SET warnings_count = warnings_count + 1
-            WHERE telegram_id = $1,
-            group_id = $2
+            WHERE telegram_id = $1
+            AND group_id = $2
             """, self.telegram_id, self.group_id
         )
 
