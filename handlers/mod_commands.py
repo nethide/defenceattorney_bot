@@ -5,6 +5,7 @@ from aiogram.enums import ChatType, ChatMemberStatus
 from aiogram.filters import Command, CommandObject
 from asyncio import sleep
 from re import findall
+from babel.dates import format_datetime
 from datetime import datetime, timedelta, timezone
 from asyncpg.pool import Pool
 from utils.duration_parser import parse_duration_one
@@ -70,7 +71,6 @@ async def execution(message: Message, database: Pool, bot: Bot, command: Command
                             reason = " ".join(command_args[2:])
                     except ValueError:
                         reason = " ".join(command_args[1:])
-                    return
 
             if cmd_user.telegram_id == target_user_id:
                 await message.answer(f"❌ Вы не можете забанить самого себя!")
@@ -93,6 +93,7 @@ async def execution(message: Message, database: Pool, bot: Bot, command: Command
 
             if time_seconds:
                 until_date = datetime.now(timezone.utc) + timedelta(seconds=time_seconds)
+                readable_date = format_datetime(until_date, "d MMMM HH:mm y'г'", locale='ru')
 
             await target_user.ban_user(reason, until_date, cmd_user.telegram_id)
             await bot.ban_chat_member(
@@ -115,7 +116,7 @@ async def execution(message: Message, database: Pool, bot: Bot, command: Command
             await message.answer(
                 f"⚖️ {mention} казнен(а) \n"
                 f"ℹ️ Причина: {reason} \n"
-                f"📅 Срок: До {until_date} \n"
+                f"📅 Срок: До {readable_date} \n"
             )
 
 
