@@ -15,7 +15,7 @@ from models.users import User
 
 router = Router()
 
-
+#/ban
 @router.message(Command("execution"))
 async def execution(message: Message, database: Pool, bot: Bot, command: CommandObject):
     if message.chat.type in ("group", "supergroup"):
@@ -120,6 +120,41 @@ async def execution(message: Message, database: Pool, bot: Bot, command: Command
                 f"📅 Срок: До {readable_date} \n"
             )
 
+#/unban
+@router.message(Command("amnesty"))
+async def amnesty(message: Message, database: Pool, bot: Bot, command: CommandObject):
+    if message.chat.type in ("group", "supergroup"):
+        cmd_user = await User.get_data(bot, database, message.from_user.id, message.chat.id)
+
+        if cmd_user.is_user_admin:
+            args = command.args.split()
+
+            if not args:
+                await message.answer(
+                    f"📃 Справка <code>{command.command}</code> \n"
+                    f"<code>/{command.command}</code> [ID] \n"
+                    f"ℹ️ Описание"
+                    f"<blockquote><code>{command.command}</code> отменяет приговор для указанного пользователя.</blockquote>"
+                )
+                return
+
+            target_user = await User.get_data(bot, database, int(args[0]), message.chat.id)
+            mention = f"@{target_user.username}" if target_user.username else html.link(
+                target_user.full_name,
+                f"tg://user?id={target_user.telegram_id}"
+            )
+
+            if target_user.status in ["kicked"]:
+                await target_user.unban_user()
+                await bot.unban_chat_member(
+                    chat_id=message.chat.id,
+                    user_id=target_user.telegram_id
+                )
+
+                await message.answer(f"⚖️ {mention}[<code>{target_user.telegram_id}</code>] разблокирован(а)")
+                return
+            else:
+                await message.answer(f"❌ Пользователь не казнён.")
 
 # Устаревшая команда. Переделать.
 @router.message(Command("tribunal"))
