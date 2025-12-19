@@ -140,7 +140,10 @@ async def amnesty(message: Message, database: Pool, bot: Bot, command: CommandOb
         cmd_user = await User.get_data(bot, database, message.from_user.id, message.chat.id)
 
         if cmd_user.is_user_admin:
-            args = command.args.split()
+            try:
+                args = command.args.split()
+            except AttributeError:
+                args = None
 
             if not args:
                 await message.answer(
