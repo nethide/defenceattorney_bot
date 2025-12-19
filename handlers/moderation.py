@@ -31,7 +31,10 @@ async def execution(message: Message, database: Pool, bot: Bot, command: Command
                 await message.answer(f"❌ Не могу проверить свои права.")
                 return
 
-            command_args = command.args.split()
+            try:
+                command_args = command.args.split()
+            except AttributeError:
+                command_args = []
             reason = None
             time_seconds = None
             until_date = None
@@ -42,14 +45,15 @@ async def execution(message: Message, database: Pool, bot: Bot, command: Command
                 target_user_id = message.reply_to_message.from_user.id
                 if len(command_args) >= 1:
                     try:
-                        time_seconds = await parse_duration_one(args[0])
+                        time_seconds = await parse_duration_one(command_args[0])
                         if len(command_args) > 1:
                             reason = " ".join(command_args[1:])
+
                     except ValueError:
                         reason = " ".join(command_args)
 
             else:
-                if not command_args:
+                if len(command_args) == 0:
                     await message.answer(
                         f"📃 Справка <code>{command.command}</code> \n"
                         f"<code>/{command.command}</code> [ID] или [username] \n"
@@ -61,7 +65,7 @@ async def execution(message: Message, database: Pool, bot: Bot, command: Command
 
                 try:
                     target_user_id = int(command_args[0])
-                except ValueError:
+                except ValueError as e:
                     await message.answer("❌ Вы не указали ID")
                     return
 
@@ -83,6 +87,14 @@ async def execution(message: Message, database: Pool, bot: Bot, command: Command
 
             target_user = await User.get_data(bot, database, target_user_id, message.chat.id)
 
+            if target_user is None:
+                await message.answer(f"❌ Пользователь <u>не найден</u>. Проверьте ID.")
+                return
+
+            if target_user.is_user_admin:
+                await message.answer(f"❌ Вы не можете вынести приговор администратору.")
+                return
+
             mention = f"@{target_user.username}" if target_user.username else html.link(
                 target_user.full_name,
                 f"tg://user?id={target_user.telegram_id}"
@@ -96,12 +108,13 @@ async def execution(message: Message, database: Pool, bot: Bot, command: Command
                 until_date = datetime.now(timezone.utc) + timedelta(seconds=time_seconds)
                 readable_date = format_datetime(until_date, "d MMMM HH:mm y'г'", locale='ru')
 
-            await target_user.ban_user(reason, until_date, cmd_user.telegram_id)
             await bot.ban_chat_member(
                 chat_id=message.chat.id,
                 user_id=target_user.telegram_id,
                 until_date=until_date
             )
+
+            await target_user.ban_user(reason, until_date, cmd_user.telegram_id)
 
             if time_seconds is None and reason is None:
                 await message.answer(f"⚖️ {mention} казнен(а) \n")
