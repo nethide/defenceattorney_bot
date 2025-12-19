@@ -3,6 +3,7 @@ from aiogram import Bot
 from aiogram.types import ChatMember
 from datetime import datetime
 from typing import Any
+from aiogram.exceptions import TelegramBadRequest
 
 class User:
     @classmethod
@@ -30,8 +31,11 @@ class User:
             """,
             telegram_id, group_id
         )
-
-        tg_data = await bot.get_chat_member(group_id, telegram_id)
+        try:
+            tg_data = await bot.get_chat_member(group_id, telegram_id)
+        except TelegramBadRequest as e:
+            if "PARTICIPANT_ID_INVALID" in e.message:
+                return None
 
         return cls(bot, pool, telegram_id, group_id, data, tg_data)
 
