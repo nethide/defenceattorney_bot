@@ -62,7 +62,8 @@ async def on_user_join(event: ChatMemberUpdated, bot: Bot, scheduler: AsyncIOSch
             chat_id=NOTIFICATION_GROUP_ID,
             text=notification_text,
             parse_mode="HTML",
-            reply_markup=keyboard
+            reply_markup=keyboard,
+            message_thread_id=19887
         )
     except Exception as e:
         print(f"Ошибка при отправке уведомления: {e}")
