@@ -80,8 +80,6 @@ class User:
             """, reason, self.telegram_id, self.group_id
         )
 
-        print(until)
-
         if not until:
             until = None
         else:

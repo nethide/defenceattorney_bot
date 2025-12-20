@@ -22,8 +22,10 @@ logging.basicConfig(level=logging.INFO, handlers=[
 bot = Bot(token=TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
 
 # Роутеры (Routers)
+from handlers.services import router as service_router
 from handlers.moderation import router as moderation_router
 from handlers.on_join_captcha import router as on_join_notify
+from handlers.help import router as help_router
 
 from middlewares.SchedulerMiddleware import SchedulerMiddleware
 from middlewares.DatabaseMiddleware import DataBaseMiddleware
@@ -46,9 +48,8 @@ async def main():
     scheduler.start()
 
     dp = Dispatcher()
-    dp.message.middleware(DataBaseMiddleware(pool_connect))
-    dp.callback_query.middleware(DataBaseMiddleware(pool_connect))
-    dp.include_routers(on_join_notify, moderation_router)
+    dp.update.middleware(DataBaseMiddleware(pool_connect))
+    dp.include_routers(on_join_notify, moderation_router, service_router, help_router)
     dp.update.middleware(SchedulerMiddleware(scheduler))
     await asyncio.gather(dp.start_polling(bot))
 
