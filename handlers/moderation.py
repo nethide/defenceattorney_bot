@@ -5,104 +5,176 @@ from aiogram.enums import ChatType, ChatMemberStatus
 from aiogram.filters import Command, CommandObject
 from asyncio import sleep
 from re import findall
+from babel.dates import format_datetime
 from datetime import datetime, timedelta, timezone
-
-from utils.members_declination import members_plural
+from asyncpg.pool import Pool
 from utils.duration_parser import parse_duration_one
+from aiogram import html
+
+from models.users import User
 
 router = Router()
-router.message.filter(F.chat.type.in_([ChatType.GROUP, ChatType.SUPERGROUP]))
 
-@router.message(Command("quiet"))
-async def silence(message: Message, bot: Bot, command: CommandObject):
-    cmd_user = message.from_user
+#/ban
+@router.message(Command("execution"))
+async def execution(message: Message, database: Pool, bot: Bot, command: CommandObject):
+    if message.chat.type in ("group", "supergroup"):
+        cmd_user = await User.get_data(bot, database, message.from_user.id, message.chat.id)
 
-    permissions_mute = ChatPermissions(
-        can_send_messages=False,
-        can_send_audios=False,
-        can_send_documents=False,
-        can_send_photos=False,
-        can_send_videos=False,
-        can_send_video_notes=False,
-        can_send_voice_notes=False,
-        can_send_polls=False,
-        can_send_other_messages=False,
-        can_add_web_page_previews=False,
-    )
-
-    member = await bot.get_chat_member(message.chat.id, message.from_user.id)
-    if member.status != ChatMemberStatus.ADMINISTRATOR or not getattr(member, "can_restrict_members", False):
-        await message.answer("❌ У вас нет права выдавать наказания")
-        return
-
-    if not command.args:
-        await message.answer(
-            "Форматы:\n"
-            f"• Ответом: <code> /{command.command} время причина</code>\n"
-            f"• По ID: <code> /{command.command} id время причина</code>"
-        )
-        return
-
-    if message.reply_to_message:
-        target_user = message.reply_to_message.from_user
-
-        parts = command.args.split(maxsplit=1)
-        time = parts[0]
-        reason = parts[1] if len(parts) > 1 else ""
-
-        seconds = await parse_duration_one(time)
-        until_date = datetime.now(timezone.utc) + timedelta(seconds=seconds)
-
-        try:
-            await bot.restrict_chat_member(
-                chat_id=message.chat.id,
-                user_id=target_user.id,
-                permissions=permissions_mute,
-                until_date=until_date
-            )
-        except TelegramBadRequest as e:
-            if "user is an administrator of the chat" in e.message:
-                await message.answer(f"{cmd_user.mention_html(f"{cmd_user.full_name}")}, вы не можете вы можете вынести приговор коллеге. ")
+        if cmd_user.is_user_admin:
+            try:
+                bot_tg_data = await bot.get_chat_member(message.chat.id, bot.id)
+                if not bot_tg_data.status in ["administrator"] or not bot_tg_data.can_restrict_members:
+                    await message.answer(f"❌ У меня нет прав для выдачи наказаний.")
+                    return
+            except Exception:
+                await message.answer(f"❌ Не могу проверить свои права.")
                 return
 
-        await message.answer(
-            f"🔇 {target_user.mention_html(name=f"{target_user.full_name}")} обезмолвлен(а)!\n"
-            f"⏱ До: <code>{until_date.strftime("%Y-%m-%d %H:%M:%S")}</code>\n"
-            f"💬 Причина: <i>{reason or '<code>Не указана</code>'}</i>"
-        )
-        return
+            try:
+                command_args = command.args.split()
+            except AttributeError:
+                command_args = []
+            reason = None
+            time_seconds = None
+            until_date = None
 
-    parts = command.args.split(maxsplit=2)
+            print(command.args)
 
-    if len(parts) < 2:
-        await message.answer(f"❌ Формат: {command.command} <code>id</code> <code>время</code> <code>причина</code>")
-        return
+            if message.reply_to_message:
+                target_user_id = message.reply_to_message.from_user.id
+                if len(command_args) >= 1:
+                    try:
+                        time_seconds = await parse_duration_one(command_args[0])
+                        if len(command_args) > 1:
+                            reason = " ".join(command_args[1:])
 
-    user_id_raw = parts[0]
-    time = parts[1]
-    reason = parts[2] if len(parts) > 2 else ""
+                    except ValueError:
+                        reason = " ".join(command_args)
 
-    seconds = await parse_duration_one(time)
-    until_date = datetime.now(timezone.utc) + timedelta(seconds=seconds)
+            else:
+                if len(command_args) == 0:
+                    await message.answer(
+                        f"📃 Справка <code>{command.command}</code> \n"
+                        f"<code>/{command.command}</code> [ID] или [username] \n"
+                        f"<code>/{command.command}</code> (ответ на сообщение)\n\n"
+                        f"ℹ️ Описание"
+                        f"<blockquote><code>{command.command}</code> казнит пользователя по id или по ответу на сообщение.</blockquote>"
+                    )
+                    return
 
-    try:
-        user_id = int(user_id_raw)
-    except ValueError:
-        await message.answer(f"❌ ID должен быть числом, а не: <code>{user_id_raw}</code>")
-        return
+                try:
+                    target_user_id = int(command_args[0])
+                except ValueError as e:
+                    await message.answer("❌ Вы не указали ID")
+                    return
 
-    target_user_raw = await bot.get_chat_member(message.chat.id, user_id)
-    target_user = target_user_raw.user
+                if len(command_args) >= 2:
+                    try:
+                        time_seconds = await parse_duration_one(command_args[1])
+                        if len(command_args) > 2:
+                            reason = " ".join(command_args[2:])
+                    except ValueError:
+                        reason = " ".join(command_args[1:])
 
-    await message.answer(
-        f"🔇 {target_user.mention_html(name=f"{target_user.full_name}")} обезмолвлен(а)!\n"
-        f"⏱ До: <code>{until_date.strftime("%Y-%m-%d %H:%M:%S")}</code>\n"
-        f"💬 Причина: <i>{reason or '<code>Не указана</code>'}</i>"
-    )
-    return
+            if cmd_user.telegram_id == target_user_id:
+                await message.answer(f"❌ Вы не можете забанить самого себя!")
+                return
 
+            if bot.id == target_user_id:
+                await message.answer(f"❌ Я не могу забанить сам себя!")
+                return
+
+            target_user = await User.get_data(bot, database, target_user_id, message.chat.id)
+
+            if target_user is None:
+                await message.answer(f"❌ Пользователь <u>не найден</u>. Проверьте ID.")
+                return
+
+            if target_user.is_user_admin:
+                await message.answer(f"❌ Вы не можете вынести приговор администратору.")
+                return
+
+            mention = f"@{target_user.username}" if target_user.username else html.link(
+                target_user.full_name,
+                f"tg://user?id={target_user.telegram_id}"
+            )
+
+            if target_user.status in ["kicked"]:
+                await message.answer(f"⚖️ Пользователю [{target_user.telegram_id}] уже вынесен приговор.")
+                return
+
+            if time_seconds:
+                until_date = datetime.now(timezone.utc) + timedelta(seconds=time_seconds)
+                readable_date = format_datetime(until_date, "d MMMM HH:mm y'г'", locale='ru')
+
+            await bot.ban_chat_member(
+                chat_id=message.chat.id,
+                user_id=target_user.telegram_id,
+                until_date=until_date
+            )
+
+            await target_user.ban_user(reason, until_date, cmd_user.telegram_id)
+
+            if time_seconds is None and reason is None:
+                await message.answer(f"⚖️ {mention} казнен(а) \n")
+                return
+
+            if until_date is None:
+                await message.answer(
+                    f"⚖️ {mention} казнен(а) \n"
+                    f"ℹ️ Причина: {reason} \n"
+                )
+                return
+
+            await message.answer(
+                f"⚖️ {mention} казнен(а) \n"
+                f"ℹ️ Причина: {reason} \n"
+                f"📅 Срок: До {readable_date} \n"
+            )
+
+#/unban
+@router.message(Command("amnesty"))
+async def amnesty(message: Message, database: Pool, bot: Bot, command: CommandObject):
+    if message.chat.type in ("group", "supergroup"):
+        cmd_user = await User.get_data(bot, database, message.from_user.id, message.chat.id)
+
+        if cmd_user.is_user_admin:
+            try:
+                args = command.args.split()
+            except AttributeError:
+                args = None
+
+            if not args:
+                await message.answer(
+                    f"📃 Справка <code>{command.command}</code> \n"
+                    f"<code>/{command.command}</code> [ID] \n"
+                    f"ℹ️ Описание"
+                    f"<blockquote><code>{command.command}</code> отменяет приговор для указанного пользователя.</blockquote>"
+                )
+                return
+
+            target_user = await User.get_data(bot, database, int(args[0]), message.chat.id)
+            mention = f"@{target_user.username}" if target_user.username else html.link(
+                target_user.full_name,
+                f"tg://user?id={target_user.telegram_id}"
+            )
+
+            if target_user.status in ["kicked"]:
+                await target_user.unban_user()
+                await bot.unban_chat_member(
+                    chat_id=message.chat.id,
+                    user_id=target_user.telegram_id
+                )
+
+                await message.answer(f"⚖️ {mention}[<code>{target_user.telegram_id}</code>] разблокирован(а)")
+                return
+            else:
+                await message.answer(f"❌ Пользователь не казнён.")
+
+# Устаревшая команда. Переделать.
 @router.message(Command("tribunal"))
-async def execute(message:  Message, bot: Bot):
+async def execute(message: Message, bot: Bot):
     chat_type = message.chat.type
 
     if chat_type == ChatType.GROUP or chat_type == ChatType.SUPERGROUP:
@@ -175,84 +247,109 @@ async def execute(message:  Message, bot: Bot):
                 pass
 
 
-@router.message(Command("execution"))
-async def execute_ban(message: Message, bot: Bot):
+# Старая команда мута. Переделать.
+@router.message(Command("quiet"))
+async def silence(message: Message, bot: Bot, command: CommandObject):
+    cmd_user = message.from_user
+    print(type(cmd_user))
 
-    try:
-        member = await bot.get_chat_member(message.chat.id, message.from_user.id)
-        if member.status not in ["creator", "administrator"]:
-            return
-    except Exception:
-        await message.answer("❌ Произошла ошибка!")
+    permissions_mute = ChatPermissions(
+        can_send_messages=False,
+        can_send_audios=False,
+        can_send_documents=False,
+        can_send_photos=False,
+        can_send_videos=False,
+        can_send_video_notes=False,
+        can_send_voice_notes=False,
+        can_send_polls=False,
+        can_send_other_messages=False,
+        can_add_web_page_previews=False,
+    )
+
+    member = await bot.get_chat_member(message.chat.id, message.from_user.id)
+    if member.status != ChatMemberStatus.ADMINISTRATOR or not getattr(member, "can_restrict_members", False):
+        await message.answer("❌ У вас нет права выдавать наказания")
         return
 
-    user_id = None
-    chat_id = message.chat.id
-    user_info = None
+    if not command.args:
+        await message.answer(
+            "Форматы:\n"
+            f"• Ответом: <code> /{command.command} время причина</code>\n"
+            f"• По ID: <code> /{command.command} id время причина</code>"
+        )
+        return
 
     if message.reply_to_message:
-        user_id = message.reply_to_message.from_user.id
-        user = message.reply_to_message.from_user
+        target_user = message.reply_to_message.from_user
 
-        full_name = user.first_name
-        if user.last_name:
-            full_name += f" {user.last_name}"
+        parts = command.args.split(maxsplit=1)
+        time = parts[0]
+        reason = parts[1] if len(parts) > 1 else ""
 
-        user_info = f"{full_name} (ID: {user_id})"
-
-        if user.username:
-            user_info += f" @{user.username}"
-
-    else:
-        command_args = message.text.split(maxsplit=1)
-
-        if len(command_args) < 2:
-            await message.reply(
-                "❌ <b>Использование:</b>\n"
-                "• <code>/execute [ID]</code> - забанить по ID\n"
-                "• <code>/execute</code> (ответ на сообщение) - забанить автора сообщения\n\n"
-                "<b>Примеры:</b>\n"
-                "• <code>/execute 123456789</code>\n"
-                "• Ответьте на сообщение пользователя и напишите <code>/execute</code>",
-                parse_mode="HTML"
-            )
-            return
+        seconds = await parse_duration_one(time)
+        until_date = datetime.now(timezone.utc) + timedelta(seconds=seconds)
 
         try:
-            user_id = int(command_args[1])
-            user_info = f"ID: {user_id}"
-        except ValueError:
-            await message.answer("❌ Неверный формат ID! Используйте числовой ID.")
-            return
-
-    if user_id == message.from_user.id:
-        await message.answer("❌ Вы не можете забанить самого себя!")
-        return
-
-    if user_id == bot.id:
-        await message.answer("❌ Я не могу забанить сам себя!")
-        return
-
-    try:
-        bot_member = await bot.get_chat_member(chat_id, bot.id)
-        if bot_member.status != "administrator" or not bot_member.can_restrict_members:
-            await message.answer("❌ У меня нет прав для бана участников!")
-            return
-    except Exception:
-        await message.answer("❌ Не могу проверить свои права!")
-        return
-
-    try:
-        await bot.ban_chat_member(chat_id, user_id)
+            await bot.restrict_chat_member(
+                chat_id=message.chat.id,
+                user_id=target_user.id,
+                permissions=permissions_mute,
+                until_date=until_date
+            )
+        except TelegramBadRequest as e:
+            if "user is an administrator of the chat" in e.message:
+                await message.answer(
+                    f"{cmd_user.mention_html(f"{cmd_user.full_name}")}, вы не можете вы можете вынести приговор коллеге. ")
+                return
 
         await message.answer(
-            f"✅ <b>Пользователь забанен!</b>\n\n"
-            f"👤 {user_info}\n"
-            f"⚡️ <b>Администратор:</b> {message.from_user.first_name}",
-            parse_mode="HTML"
+            f"🔇 {target_user.mention_html(name=f"{target_user.full_name}")} обезмолвлен(а)!\n"
+            f"⏱ До: <code>{until_date.strftime("%Y-%m-%d %H:%M:%S")}</code>\n"
+            f"💬 Причина: <i>{reason or '<code>Не указана</code>'}</i>"
         )
-    except Exception as e:
-        await message.answer(f"❌ Ошибка при бане: {str(e)}")
+        return
+
+    parts = command.args.split(maxsplit=2)
+
+    if len(parts) < 2:
+        await message.answer(f"❌ Формат: {command.command} <code>id</code> <code>время</code> <code>причина</code>")
+        return
+
+    user_id_raw = parts[0]
+    time = parts[1]
+    reason = parts[2] if len(parts) > 2 else ""
+
+    seconds = await parse_duration_one(time)
+    until_date = datetime.now(timezone.utc) + timedelta(seconds=seconds)
+
+    try:
+        user_id = int(user_id_raw)
+    except ValueError:
+        await message.answer(f"❌ ID должен быть числом, а не: <code>{user_id_raw}</code>")
+        return
+
+    target_user_raw = await bot.get_chat_member(message.chat.id, user_id)
+    target_user = target_user_raw.user
+
+    await message.answer(
+        f"🔇 {target_user.mention_html(name=f"{target_user.full_name}")} обезмолвлен(а)!\n"
+        f"⏱ До: <code>{until_date.strftime("%Y-%m-%d %H:%M:%S")}</code>\n"
+        f"💬 Причина: <i>{reason or '<code>Не указана</code>'}</i>"
+    )
+    return
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
